@@ -1,0 +1,72 @@
+@prefix ex:   <http://example.org/requirements#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+
+# Классы
+ex:System    rdf:type owl:Class .
+ex:Action    rdf:type owl:Class .
+ex:Condition rdf:type owl:Class .
+ex:Event     rdf:type owl:Class ; rdfs:subClassOf ex:Condition .
+ex:State     rdf:type owl:Class ; rdfs:subClassOf ex:Condition .
+ex:Feature   rdf:type owl:Class ; rdfs:subClassOf ex:Condition .
+ex:Trigger   rdf:type owl:Class ; rdfs:subClassOf ex:Condition .
+
+# Свойства
+ex:permits      rdf:type owl:ObjectProperty ;
+                rdfs:domain ex:Condition ;
+                rdfs:range ex:Action .
+ex:forbids      rdf:type owl:ObjectProperty ;
+                rdfs:domain ex:Condition ;
+                rdfs:range ex:Action .
+ex:triggers     rdf:type owl:ObjectProperty ;
+                rdfs:domain ex:Event ;
+                rdfs:range ex:Action .
+ex:enables      rdf:type owl:ObjectProperty ;
+                rdfs:domain ex:Feature ;
+                rdfs:range ex:Action .
+ex:part_of      rdf:type owl:ObjectProperty ;
+                rdfs:domain ex:System ;
+                rdfs:range ex:System .
+ex:subclass_of  rdf:type owl:TransitiveProperty ;
+                rdfs:domain ex:Condition ;
+                rdfs:range ex:Condition .
+
+# Индивиды систем
+ex:Vehicle              rdf:type ex:System .
+ex:DriverSeat           rdf:type ex:System ; ex:part_of ex:Vehicle .
+ex:PassengerSeat        rdf:type ex:System ; ex:part_of ex:Vehicle .
+ex:SWP                  rdf:type ex:System .
+ex:MobileApp            rdf:type ex:System .
+ex:VoiceAssistant       rdf:type ex:System .
+ex:WeelButtons          rdf:type ex:System .
+
+# Состояния и их иерархия
+ex:GearMode             rdf:type ex:State .
+ex:R_Mode               rdf:type ex:State ; ex:subclass_of ex:GearMode .
+ex:D_Mode               rdf:type ex:State ; ex:subclass_of ex:GearMode .
+ex:N_Mode               rdf:type ex:State ; ex:subclass_of ex:GearMode .
+ex:P_Mode               rdf:type ex:State ; ex:subclass_of ex:GearMode .
+
+ex:VehicleMovingState   rdf:type ex:State .
+ex:Cruising             rdf:type ex:State ; ex:subclass_of ex:VehicleMovingState .
+ex:Parking              rdf:type ex:State ; ex:subclass_of ex:VehicleMovingState .
+
+ex:DoorState            rdf:type ex:State .
+ex:DoorOpen             rdf:type ex:State ; ex:subclass_of ex:DoorState .
+ex:DoorClosed           rdf:type ex:State ; ex:subclass_of ex:DoorState .
+ex:RearDoorOpen         rdf:type ex:State ; ex:subclass_of ex:DoorOpen .
+
+ex:SeatAdjustmentMode   rdf:type ex:State .
+ex:SeatMoving           rdf:type ex:State ; ex:subclass_of ex:SeatAdjustmentMode .
+ex:SeatStopped          rdf:type ex:State ; ex:subclass_of ex:SeatAdjustmentMode .
+
+ex:SeatAdjusting        rdf:type ex:State .
+
+# Действия
+ex:adjust               rdf:type ex:Action .
+ex:stop_adjustment      rdf:type ex:Action .
+ex:display_status       rdf:type ex:Action .
+ex:send_notification    rdf:type ex:Action .
+ex:create_role          rdf:type ex:Action .
+ex:toggle_adjustment    rdf:type ex:Action .
