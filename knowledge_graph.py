@@ -22,19 +22,20 @@ class KnowledgeGraph:
         else:
             self._init_base_ontology()
         
-        self.graph.add((EX.has_action, RDF.type, OWL.ObjectProperty))
-        self.graph.add((EX.has_action, RDFS.domain, EX.System))
-        self.graph.add((EX.has_action, RDFS.range, EX.Action))
+        self.graph.add((EX.has_activity, RDF.type, OWL.ObjectProperty))
+        self.graph.add((EX.has_activity, RDFS.domain, EX.System))
+        self.graph.add((EX.has_activity, RDFS.range, EX.Activity))
 
         self._subclass_cache = None  # кеш транзитивного замыкания
         self.req_trace = {}  # Трасировка: (cond_uri, action_uri, pred) -> list of (req_id, req_raw_text)
-
 
     """Создаёт минимальную онтологию, если файл не предоставлен."""
     def _init_base_ontology(self):
         # Классы
         self.graph.add((EX.System, RDF.type, OWL.Class))
         self.graph.add((EX.Action, RDF.type, OWL.Class))
+        self.graph.add((EX.Object, RDF.type, OWL.Class))
+        self.graph.add((EX.Activity, RDF.type, OWL.Class))
         self.graph.add((EX.Condition, RDF.type, OWL.Class))
         self.graph.add((EX.Event, RDF.type, OWL.Class))
         self.graph.add((EX.Event, RDFS.subClassOf, EX.Condition))
@@ -45,22 +46,42 @@ class KnowledgeGraph:
         self.graph.add((EX.Trigger, RDF.type, OWL.Class))
         self.graph.add((EX.Trigger, RDFS.subClassOf, EX.Condition))
 
-        # Свойства
+        # Свойства для Activity
+        self.graph.add((EX.has_action, RDF.type, OWL.ObjectProperty))
+        self.graph.add((EX.has_action, RDFS.domain, EX.Activity))
+        self.graph.add((EX.has_action, RDFS.range, EX.Action))
+
+        self.graph.add((EX.has_object, RDF.type, OWL.ObjectProperty))
+        self.graph.add((EX.has_object, RDFS.domain, EX.Activity))
+        self.graph.add((EX.has_object, RDFS.range, EX.Object))
+
+        # Связь системы с активностью
+        self.graph.add((EX.has_activity, RDF.type, OWL.ObjectProperty))
+        self.graph.add((EX.has_activity, RDFS.domain, EX.System))
+        self.graph.add((EX.has_activity, RDFS.range, EX.Activity))
+
+        # Разрешающие/запрещающие свойства ведут к Activity
         self.graph.add((EX.permits, RDF.type, OWL.ObjectProperty))
         self.graph.add((EX.permits, RDFS.domain, EX.Condition))
-        self.graph.add((EX.permits, RDFS.range, EX.Action))
+        self.graph.add((EX.permits, RDFS.range, EX.Activity))
+
         self.graph.add((EX.forbids, RDF.type, OWL.ObjectProperty))
         self.graph.add((EX.forbids, RDFS.domain, EX.Condition))
-        self.graph.add((EX.forbids, RDFS.range, EX.Action))
+        self.graph.add((EX.forbids, RDFS.range, EX.Activity))
+
         self.graph.add((EX.triggers, RDF.type, OWL.ObjectProperty))
         self.graph.add((EX.triggers, RDFS.domain, EX.Event))
-        self.graph.add((EX.triggers, RDFS.range, EX.Action))
+        self.graph.add((EX.triggers, RDFS.range, EX.Activity))
+
         self.graph.add((EX.enables, RDF.type, OWL.ObjectProperty))
         self.graph.add((EX.enables, RDFS.domain, EX.Feature))
-        self.graph.add((EX.enables, RDFS.range, EX.Action))
+        self.graph.add((EX.enables, RDFS.range, EX.Activity))
+
+        # Иерархические свойства
         self.graph.add((EX.part_of, RDF.type, OWL.ObjectProperty))
         self.graph.add((EX.part_of, RDFS.domain, EX.System))
         self.graph.add((EX.part_of, RDFS.range, EX.System))
+
         self.graph.add((EX.subclass_of, RDF.type, OWL.TransitiveProperty))
         self.graph.add((EX.subclass_of, RDFS.domain, EX.Condition))
         self.graph.add((EX.subclass_of, RDFS.range, EX.Condition))
@@ -137,74 +158,115 @@ class KnowledgeGraph:
                 return True
         return False
 
+    # ________________ Блок функций по поиску конфликтов в требованиях ________________
+    """
+    Возвращает список (state, action, object, pred_type)
+    для всех состояний (State) с permits/forbids
+    """
+    def _get_state_activity_pairs(self):
+        query = """
+        PREFIX ex: <http://example.org/requirements#>
+        SELECT ?state ?activity ?action ?object ?type
+        WHERE {
+            { ?state ex:permits ?activity . BIND("permits" AS ?type) }
+            UNION
+            { ?state ex:forbids ?activity . BIND("forbids" AS ?type) }
+            ?state a ex:State .
+            ?activity ex:has_action ?action .
+            OPTIONAL { ?activity ex:has_object ?object }
+        }
+        """
+
+        results = []
+        for row in self.graph.query(query):
+            state = URIRef(row.state)
+            activity = URIRef(row.activity)
+            action = URIRef(row.action)
+            obj = URIRef(row.object) if row.object else None
+            ptype = str(row.type)
+            results.append((state, activity, action, obj, ptype))
+        return results
+
+    """Группирует по activity (уникальная комбинация действие + объект)."""
+    def _group_by_activity(self, pairs):
+        groups = {}
+        for state, activity, action, obj, ptype in pairs:
+            if activity not in groups:
+                groups[activity] = {
+                    "permits": set(), "forbids": set(),
+                    "action": action, "object": obj
+                }
+            groups[activity][ptype].add(state)
+
+        return groups
+
+    """Поиск прямых конфликтов"""
+    def _find_direct_conflicts(self, activity, info):
+        conflicts = []
+        direct = info["permits"].intersection(info["forbids"])
+        for state in direct:
+            reqs = []
+            for pred in (EX.permits, EX.forbids):
+                key = (state, activity, pred)
+                for rid, rtext in self.req_trace.get(key, []):
+                    reqs.append(f"{rid} - {rtext}")
+            reqs_str = "\n\t".join(reqs)
+            action_str = self._format_activity(info["action"], info["object"])
+            conflicts.append(
+                f"[STATE CONFLICT] Состояние {state.split('#')[-1]} одновременно разрешает и запрещает {action_str}.\n"
+                f"\tЗатронутые требования:\n\t{reqs_str}"
+            )
+        return conflicts
+
+    """Поиск конфликтов перекрытия иерархий"""
+    def _find_overlap_conflicts(self, activity, info):
+        conflicts = []
+        for s_perm in info["permits"]:
+            for s_forb in info["forbids"]:
+                if s_perm == s_forb:
+                    continue
+                if self._states_overlap(s_perm, s_forb):
+                    reqs = []
+                    for pred, state in [(EX.permits, s_perm), (EX.forbids, s_forb)]:
+                        key = (state, activity, pred)
+                        for rid, rtext in self.req_trace.get(key, []):
+                            reqs.append(f"{rid} - {rtext}")
+                    reqs_str = "\n\t".join(reqs)
+                    action_str = self._format_activity(info["action"], info["object"])
+                    conflicts.append(
+                        f"[STATE OVERLAP CONFLICT] Состояния '{s_perm.split('#')[-1]}' (разрешает) и '{s_forb.split('#')[-1]}' (запрещает) "
+                        f"пересекаются по иерархии для {action_str}.\n"
+                        f"\tЗатронутые требования:\n\t{reqs_str}"
+                    )
+        return conflicts
+
+    """Форматирует ключ действия для вывода"""
+    def _format_activity(self, action_uri, object_uri):
+        action_name = action_uri.split('#')[-1] if action_uri else "?"
+        if object_uri:
+            obj_name = object_uri.split('#')[-1]
+            return f"действия '{action_name}' над '{obj_name}'"
+        return f"действия '{action_name}'"
+    
     """
     Ищет семантические конфликты на основе графа:
     - Прямые противоречия (одно состояние и разрешает, и запрещает)
     - Перекрытие состояний (два состояния с разными разрешениями для одного действия, иерархии которых пересекаются)
     """
     def find_conflicts(self) -> List[str]:
-        conflicts = []
         if self._subclass_cache is None:
             self._compute_subclass_closure()
 
-        # Получаем все пары (состояние, действие) с permits и forbids
-        query = """
-        PREFIX ex: <http://example.org/requirements#>
-        SELECT ?state ?action ?type
-        WHERE {
-            { ?state ex:permits ?action . BIND("permits" AS ?type) }
-            UNION
-            { ?state ex:forbids ?action . BIND("forbids" AS ?type) }
-            ?state a ex:State .
-        }
-        """
+        pairs = self._get_state_activity_pairs()
+        groups = self._group_by_activity(pairs)
 
-        # Группируем по действию
-        action_map = {}
-        for row in self.graph.query(query):
-            state = URIRef(row.state)
-            action = URIRef(row.action)
-            perm_type = str(row.type)
-            if action not in action_map:
-                action_map[action] = {"permits": set(), "forbids": set()}
-            action_map[action][perm_type].add(state)
+        all_conflicts = []
+        for activity, info in groups.items():
+            all_conflicts.extend(self._find_direct_conflicts(activity, info))
+            all_conflicts.extend(self._find_overlap_conflicts(activity, info))
 
-        for action, state_sets in action_map.items():
-            permits_set = state_sets["permits"]
-            forbids_set = state_sets["forbids"]
-
-            # 1. Прямые конфликты (одно состояние и там, и там)
-            direct = permits_set.intersection(forbids_set)
-            for state in direct:
-                reqs = []
-                for pred in (EX.permits, EX.forbids):
-                    key = (state, action, pred)
-                    for rid, rtext in self.req_trace.get(key, []):
-                        reqs.append(f"{rid} - {rtext}")
-                reqs_str = "\n\t".join(reqs)
-                conflicts.append(
-                    f"[STATE CONFLICT] Состояние {state.split('#')[-1]} одновременно разрешает и запрещает действие {action.split('#')[-1]}.\n"
-                    f"\tЗатронутые требования:\n\t{reqs_str}"
-                )
-
-            # 2. Конфликты перекрытия (разные состояния, но иерархии пересекаются)
-            for s_perm in permits_set:
-                for s_forb in forbids_set:
-                    if s_perm == s_forb:
-                        continue
-                    if self._states_overlap(s_perm, s_forb):
-                        reqs = []
-                        for pred, state in [(EX.permits, s_perm), (EX.forbids, s_forb)]:
-                            key = (state, action, pred)
-                            for rid, rtext in self.req_trace.get(key, []):
-                                reqs.append(f"{rid} - {rtext}")
-                        reqs_str = "\n\t".join(reqs)
-                        conflicts.append(
-                            f"[STATE OVERLAP CONFLICT] Состояния '{s_perm.split('#')[-1]}' (разрешает) и '{s_forb.split('#')[-1]}' (запрещает) "
-                            f"пересекаются по иерархии для действия {action.split('#')[-1]}.\n"
-                            f"\tЗатронутые требования:\n\t{reqs_str}"
-                        )
-        return conflicts
+        return all_conflicts
+    # ________________ Конец блока функций по поиску конфликтов в требованиях ________________
     
     """
     Возвращает URI индивида с заданным именем.
@@ -243,14 +305,40 @@ class KnowledgeGraph:
         else:
             normalized_response = raw_response
 
-        # Действие (реакция)
-        # Упрощённо: берём только первое слово действия
-        # В будущем можно выделять нормализованное действие
-        action_name = normalized_response.split()[0]  # if normalized_response else "unknown_action"
-        action_uri = self.get_or_create_individual(action_name, EX.Action)
-        
-        # Связь система-действие
-        self.graph.add((sys_uri, EX.has_action, action_uri))
+        # Извлечение глагола и объекта с помощью spaCy
+        doc = req.tokens  # spaCy Doc уже сохранён в парсере
+        action_lemma = None
+        object_text = None
+        # Ищем корневой глагол (ROOT) или первый глагол
+        for token in doc:
+            if token.pos_ == "VERB":
+                action_lemma = token.lemma_
+                for child in token.children:
+                    if child.dep_ == "dobj":
+                        object_span = doc[child.left_edge.i : child.right_edge.i + 1]
+                        object_text = object_span.text.strip()
+                        break
+                break
+
+        # Если не нашли глагол, fallback на первое слово
+        if not action_lemma:
+            action_lemma = normalized_response.split()[0]
+
+        action_uri = self.get_or_create_individual(action_lemma, EX.Action)
+        object_uri = None
+        if object_text:
+            object_uri = self.get_or_create_individual(object_text, EX.Object)
+
+        # Создаём Activity и связываем
+        # activity_name формируем как комбинацию для уникальности
+        activity_name = f"{action_lemma}_{self._normalize_name(object_text)}" if object_text else action_lemma
+        activity_uri = self.get_or_create_individual(activity_name, EX.Activity)
+        self.graph.add((activity_uri, EX.has_action, action_uri))
+        if object_uri:
+            self.graph.add((activity_uri, EX.has_object, object_uri))
+
+        # Связь система-activity
+        self.graph.add((sys_uri, EX.has_activity, activity_uri))  # нужно добавить свойство has_activity
 
         if req.condition and req.req_type:
             cond_name = req.condition.strip()
@@ -273,10 +361,10 @@ class KnowledgeGraph:
                     pred = EX.permits
 
             cond_uri = self.get_or_create_individual(cond_name, cond_class)
-            self.graph.add((cond_uri, pred, action_uri))
+            self.graph.add((cond_uri, pred, activity_uri))
 
             # Трассировка
-            key = (cond_uri, action_uri, pred)
+            key = (cond_uri, activity_uri, pred)
             if key not in self.req_trace:
                 self.req_trace[key] = []
             self.req_trace[key].append((req.id, req.raw_text))

@@ -77,3 +77,5 @@ While RearDoorOpen, the System shall adjust the seat position.
 While VehicleMovingState, the System shall not adjust the seat position.
 36. Forbid seat adjustment when DoorOpen
 While DoorOpen, the System shall not adjust the seat position.
+37. Forbid seat steering wheel when DoorOpen
+While DoorOpen, the System shall not adjust the steering wheel position.
