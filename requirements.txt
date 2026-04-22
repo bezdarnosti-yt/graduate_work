@@ -81,3 +81,8 @@ While VehicleMovingState, the System shall forbid the seat position adjustment.
 While DoorOpen, the System shall block the seat position adjustment.
 37. Steering wheel adjustment forbidden when DoorOpen
 While DoorOpen, the System shall not adjust the steering wheel position.
+
+38. Enable seat heating when engine running
+While the engine is running, the System shall enable seat heating.
+39. Disable seat heating when engine running
+While the engine is running, the System shall disable seat heating.
