@@ -27,10 +27,15 @@ class ReqElementType(Enum):
 class Requirement:
     header: str
     raw_text: str
-    id: Optional[str] = None          # идентификатор из исходного файла
+    id: Optional[str] = None            # идентификатор из исходного файла
     req_type: Optional[ReqType] = None
     system: Optional[str] = None
     response: Optional[str] = None
-    condition: Optional[str] = None   # объединяет event/state/feature/trigger
-    # дополнительные поля для будущего использования
-    tokens: Optional[List] = None     # spaCy Doc (для дальнейшего анализа)
+    condition: Optional[str] = None     # объединяет event/state/feature/trigger
+
+    # Нормализованные поля (заполняются парсером)
+    canonical_action: Optional[str] = None
+    canonical_object: Optional[str] = None
+    is_negative: bool = False
+    
+    tokens: Optional[List] = None       # spaCy Doc для дальнейшего использования

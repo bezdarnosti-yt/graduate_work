@@ -1,0 +1,77 @@
+{
+  "adjust": {
+    "canonical": "adjust"
+  },
+  "block": {
+    "canonical": "adjust",
+    "negative": true,
+    "object_mapping": {
+      "the seat position adjustment": "seat position",
+      "seat position adjustment": "seat position"
+    }
+  },
+  "prevent": {
+    "canonical": "adjust",
+    "negative": true,
+    "object_mapping": {
+      "the seat position adjustment": "seat position",
+      "seat position adjustment": "seat position"
+    }
+  },
+  "enable": {
+    "canonical": "enable"
+  },
+  "disable": {
+    "canonical": "enable",
+    "negative": true
+  },
+  "activate": {
+    "canonical": "activate"
+  },
+  "deactivate": {
+    "canonical": "activate",
+    "negative": true
+  },
+  "turn_on": {
+    "canonical": "turn_on"
+  },
+  "turn_off": {
+    "canonical": "turn_on",
+    "negative": true
+  },
+  "stop": {
+    "canonical": "stop"
+  },
+  "start": {
+    "canonical": "stop",
+    "negative": true
+  },
+  "allow": {
+    "canonical": "adjust",
+    "object_mapping": {
+      "seat position adjustment": "seat position"
+    }
+  },
+  "forbid": {
+    "canonical": "adjust",
+    "negative": true,
+    "object_mapping": {
+      "the seat position adjustment": "seat position",
+      "seat position adjustment": "seat position"
+    }
+  },
+  "prohibit": {
+    "canonical": "allow",
+    "negative": true
+  },
+  "display": {
+    "canonical": "display"
+  },
+  "hide": {
+    "canonical": "display",
+    "negative": true
+  },
+  "inform": {
+    "canonical": "inform"
+  }
+}

@@ -1,6 +1,7 @@
 # knowledge_graph.py
 """Модуль для построения и анализа графа знаний предметной области с использованием RDFLib."""
 
+import json
 import re
 from rdflib import Graph, Namespace, RDF, RDFS, OWL, URIRef
 from typing import Dict, List, Set
@@ -86,6 +87,11 @@ class KnowledgeGraph:
         self.graph.add((EX.subclass_of, RDFS.domain, EX.Condition))
         self.graph.add((EX.subclass_of, RDFS.range, EX.Condition))
 
+        # Запрещающее событие
+        self.graph.add((EX.blocks, RDF.type, OWL.ObjectProperty))
+        self.graph.add((EX.blocks, RDFS.domain, EX.Event))
+        self.graph.add((EX.blocks, RDFS.range, EX.Activity))
+
     """
     Приводит строку к безопасному фрагменту URI
     """
@@ -148,9 +154,6 @@ class KnowledgeGraph:
     def _states_overlap(self, state1: URIRef, state2: URIRef) -> bool:
         if self._subclass_cache is None:
             self._compute_subclass_closure()
-        # sub1 = self._subclass_cache.get(state1, {state1})
-        # sub2 = self._subclass_cache.get(state2, {state2})
-        # return not sub1.isdisjoint(sub2)
 
         # Ищем общий подкласс: существует ли состояние c, которое является подклассом и state1, и state2
         for c, supers in self._subclass_cache.items():
@@ -292,67 +295,41 @@ class KnowledgeGraph:
     def add_requirement(self, req: Requirement):
         if not req.system or not req.response:
             return  # Ошибка
- 
+
         sys_uri = self.get_or_create_individual(req.system, EX.System)
 
-        # Нормализация действия: убираем отрицание, если есть
-        # В будущем перейдёт в отдельную функцию
-        raw_response = req.response.strip()
-        is_negative = False
-        if raw_response.lower().startswith("not "):  # Пока что отрицание определяем только по ключевому слову not
-            is_negative = True
-            normalized_response = raw_response[4:].strip()
-        else:
-            normalized_response = raw_response
-
-        # Извлечение глагола и объекта с помощью spaCy
-        doc = req.tokens  # spaCy Doc уже сохранён в парсере
-        action_lemma = None
-        object_text = None
-        # Ищем корневой глагол (ROOT) или первый глагол
-        for token in doc:
-            if token.pos_ == "VERB":
-                action_lemma = token.lemma_
-                for child in token.children:
-                    if child.dep_ == "dobj":
-                        object_span = doc[child.left_edge.i : child.right_edge.i + 1]
-                        object_text = object_span.text.strip()
-                        break
-                break
-
-        # Если не нашли глагол, fallback на первое слово
-        if not action_lemma:
-            action_lemma = normalized_response.split()[0]
-
-        action_uri = self.get_or_create_individual(action_lemma, EX.Action)
+        # Используем готовые канонические значения
+        action_uri = self.get_or_create_individual(req.canonical_action, EX.Action)
         object_uri = None
-        if object_text:
-            object_uri = self.get_or_create_individual(object_text, EX.Object)
+        if req.canonical_object:
+            object_uri = self.get_or_create_individual(req.canonical_object, EX.Object)
 
-        # Создаём Activity и связываем
-        # activity_name формируем как комбинацию для уникальности
-        activity_name = f"{action_lemma}_{self._normalize_name(object_text)}" if object_text else action_lemma
+        # Формируем имя Activity
+        if object_uri:
+            obj_part = self._normalize_name(req.canonical_object)
+            activity_name = f"{req.canonical_action}_{obj_part}"
+        else:
+            activity_name = req.canonical_action
+
         activity_uri = self.get_or_create_individual(activity_name, EX.Activity)
         self.graph.add((activity_uri, EX.has_action, action_uri))
         if object_uri:
             self.graph.add((activity_uri, EX.has_object, object_uri))
 
-        # Связь система-activity
-        self.graph.add((sys_uri, EX.has_activity, activity_uri))  # нужно добавить свойство has_activity
+        self.graph.add((sys_uri, EX.has_activity, activity_uri))
 
         if req.condition and req.req_type:
             cond_name = req.condition.strip()
-            # Определяем класс условия по типу требования
             match req.req_type:
                 case ReqType.EVENT_DRIVEN:
                     cond_class = EX.Event
-                    pred = EX.triggers
+                    pred = EX.blocks if req.is_negative else EX.triggers
                 case ReqType.STATE_DRIVEN:
                     cond_class = EX.State
-                    pred = EX.forbids if is_negative else EX.permits
+                    pred = EX.forbids if req.is_negative else EX.permits
                 case ReqType.OPTIONAL_FEATURE:
                     cond_class = EX.Feature
-                    pred = EX.enables
+                    pred = EX.enables  # для Optional отрицание не меняет предикат
                 case ReqType.UNWANTED_BEHAVIOR:
                     cond_class = EX.Trigger
                     pred = EX.triggers

@@ -61,21 +61,23 @@ When the passenger seat motor malfunction is detected ([OIDO - 1226565] Passenge
 
 28. Heater activation
 The System shall activate the heater.
-29. Heater deactivation
-The System shall not activate the heater.
-30. Autopilot enable in running engine
+29. Heater deactivation via antonym
+The System shall deactivate the heater.
+
+30. Autopilot enable while engine running
 While the engine is running, the System shall enable autopilot.
-31. Autopilot disable in running engine
-While the engine is running, the System shall not enable autopilot.
-32. Allow seat adjustment in Parking
+31. Autopilot disable
+While the engine is running, the System shouldn't enable autopilot.
+
+32. Seat adjustment allowed in Parking
 While Parking, the System shall adjust the seat position.
-33. Forbid seat adjustment in Cruising
+33. Seat adjustment forbidden in Cruising via explicit not
 While Cruising, the System shall not adjust the seat position.
-34. Allow seat adjustment when RearDoorOpen (conflict with DoorOpen)
+34. Seat adjustment allowed when RearDoorOpen
 While RearDoorOpen, the System shall adjust the seat position.
-35. Forbid seat adjustment in VehicleMovingState
-While VehicleMovingState, the System shall not adjust the seat position.
-36. Forbid seat adjustment when DoorOpen
-While DoorOpen, the System shall not adjust the seat position.
-37. Forbid seat steering wheel when DoorOpen
+35. Seat adjustment forbidden in VehicleMovingState
+While VehicleMovingState, the System shall forbid the seat position adjustment.
+36. Seat adjustment forbidden when DoorOpen via antonym 'block'
+While DoorOpen, the System shall block the seat position adjustment.
+37. Steering wheel adjustment forbidden when DoorOpen
 While DoorOpen, the System shall not adjust the steering wheel position.
