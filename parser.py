@@ -1,11 +1,12 @@
-# parser.py
 """Модуль разбора текстовых требований, классификации и извлечения сущностей."""
+
 
 import re
 import json
 import spacy
 from typing import List, Tuple, Optional
 from models import Requirement, ReqType
+
 
 # Загружаем модель spaCy (глобально, чтобы не перезагружать для каждого требования)
 try:
@@ -15,11 +16,14 @@ except OSError:
     print("Модель spaCy 'en_core_web_sm' не найдена. Установите: python -m spacy download en_core_web_sm")
     raise
 
+
 DEBUG = True
 _normalization_table = {}
 
-"""Загружает таблицу нормализации действий и объектов из JSON."""
+
 def load_normalization_table(path: str = "data/action_normalization.json"):
+    """Загружает таблицу нормализации действий и объектов из JSON."""
+    
     global _normalization_table
     try:
         with open(path, 'r', encoding='utf-8') as f:
@@ -28,11 +32,17 @@ def load_normalization_table(path: str = "data/action_normalization.json"):
         print(f"Предупреждение: Файл нормализации '{path}' не найден. Будет использована пустая таблица.")
         _normalization_table = {}
 
-"""
-Приводит действие и объект к каноническому виду, определяет итоговый флаг отрицания.
-Возвращает (canonical_action, canonical_object, is_negative).
-"""
-def normalize_action_object(action_lemma: str, object_text: Optional[str], explicit_negative: bool) -> Tuple[str, Optional[str], bool]:
+
+def normalize_action_object(
+        action_lemma: str, 
+        object_text: Optional[str], 
+        explicit_negative: bool
+        ) -> Tuple[str, Optional[str], bool]:
+    """
+    Приводит действие и объект к каноническому виду, определяет итоговый флаг отрицания.
+    Возвращает (canonical_action, canonical_object, is_negative).
+    """
+
     entry = _normalization_table.get(action_lemma, {})
     canonical_action = entry.get("canonical", action_lemma)
     negative_from_entry = entry.get("negative", False)
@@ -62,11 +72,13 @@ def normalize_action_object(action_lemma: str, object_text: Optional[str], expli
 
     return canonical_action, canonical_object, is_negative
 
-"""
-Читает файл с требованиями, извлекает заголовок (строка с номером) и текст требования.
-Возвращает список объектов Requirement с заполненными header и raw_text.
-"""
+
 def load_requirements_from_file(filepath: str) -> List[Requirement]:
+    """
+    Читает файл с требованиями, извлекает заголовок (строка с номером) и текст требования.
+    Возвращает список объектов Requirement с заполненными header и raw_text.
+    """
+
     with open(filepath, 'r', encoding='utf-8') as f:
         lines = [line.rstrip('\n') for line in f]
 
@@ -96,11 +108,13 @@ def load_requirements_from_file(filepath: str) -> List[Requirement]:
 
     return requirements
 
-"""
-Определяет тип требования по первому ключевому слову (шаблон EARS).
-Возвращает ReqType.
-"""
+
 def classify_requirement_type(text: str) -> ReqType:
+    """
+    Определяет тип требования по первому ключевому слову (шаблон EARS).
+    Возвращает ReqType.
+    """
+
     text_lower = text.lower()
     first_word = text_lower.split(maxsplit=1)[0] if text_lower else ""
 
@@ -119,11 +133,13 @@ def classify_requirement_type(text: str) -> ReqType:
             # Если не подходит ни под один шаблон, по умолчанию считаем повсеместным
             return ReqType.UBIQUITOUS
 
-"""
-Извлекает system, response, condition и is_negative из текста требования EARS.
-Устойчива к вложенным 'the' и содержит определение отрицания по глаголу.
-"""
+
 def extract_system_response_condition(text: str, req_type: ReqType) -> Tuple[Optional[str], Optional[str], Optional[str], bool]:
+    """
+    Извлекает system, response, condition и is_negative из текста требования EARS.
+    Устойчива к вложенным 'the' и содержит определение отрицания по глаголу.
+    """
+
     text_clean = text.strip()
     system = None
     response = None
@@ -178,11 +194,13 @@ def extract_system_response_condition(text: str, req_type: ReqType) -> Tuple[Opt
 
     return system, response, condition, is_negative
 
-"""
-Полный цикл обработки одного требования: классификация, извлечение сущностей,
-создание объекта Requirement с базовым NLP-анализом (токенизация).
-"""
+
 def parse_requirement(req: Requirement) -> Requirement:
+    """
+    Полный цикл обработки одного требования: классификация, извлечение сущностей,
+    создание объекта Requirement с базовым NLP-анализом (токенизация).
+    """
+
     req.req_type = classify_requirement_type(req.raw_text)
     system, response, condition, explicit_neg = extract_system_response_condition(req.raw_text, req.req_type)
     req.system = system
@@ -195,6 +213,7 @@ def parse_requirement(req: Requirement) -> Requirement:
 
     action_lemma = None
     object_text = None
+
     # Ищем глагол в ответе, если ответ не пуст
     if response:
         resp_doc = nlp(response)
@@ -220,10 +239,12 @@ def parse_requirement(req: Requirement) -> Requirement:
 
     return req
 
-"""
-Загружает файл, парсит каждое требование, возвращает список Requirement.
-"""
+
 def parse_all_requirements(filepath: str) -> List[Requirement]:
+    """
+    Загружает файл, парсит каждое требование, возвращает список Requirement.
+    """
+
     requirements = load_requirements_from_file(filepath)
 
     for idx, req in enumerate(requirements):
