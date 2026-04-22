@@ -221,7 +221,7 @@ def parse_requirement(req: Requirement) -> Requirement:
             if token.pos_ == "VERB":
                 action_lemma = token.lemma_
                 for child in token.children:
-                    if child.dep_ == "dobj":
+                    if child.dep_ == "obj":
                         object_span = resp_doc[child.left_edge.i : child.right_edge.i + 1]
                         object_text = object_span.text.strip()
                         break

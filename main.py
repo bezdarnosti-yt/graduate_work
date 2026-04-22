@@ -23,7 +23,7 @@ def rule_checks(requirements):
         for conflict in rule_conflicts:
             print(f"  {conflict}")
     else:
-        print("  Конфликтов по правилам не обнаружено.")
+        print("Конфликтов по правилам не обнаружено.")
 	
     return rule_conflicts  # В будущем будем централизованно выводить все конфликты
 
