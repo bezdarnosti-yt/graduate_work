@@ -1,19 +1,20 @@
-# knowledge_graph.py
 """Модуль для построения и анализа графа знаний предметной области с использованием RDFLib."""
 
-import json
+
 import re
 from rdflib import Graph, Namespace, RDF, RDFS, OWL, URIRef
 from typing import Dict, List, Set
 from models import Requirement, ReqType
 
+
 # Определяем пространство имён
 EX = Namespace("http://example.org/requirements#")
 
-"""
-Граф знаний, основанный на RDF. Хранит онтологию и экземпляры, извлечённые из требований.
-"""
+
 class KnowledgeGraph:
+    """
+    Граф знаний, основанный на RDF. Хранит онтологию и экземпляры, извлечённые из требований.
+    """
 
     def __init__(self, base_ontology_path: str = None):
         self.graph = Graph()
@@ -27,11 +28,13 @@ class KnowledgeGraph:
         self.graph.add((EX.has_activity, RDFS.domain, EX.System))
         self.graph.add((EX.has_activity, RDFS.range, EX.Activity))
 
-        self._subclass_cache = None  # кеш транзитивного замыкания
+        self._subclass_cache = None  # Кеш транзитивного замыкания
         self.req_trace = {}  # Трасировка: (cond_uri, action_uri, pred) -> list of (req_id, req_raw_text)
 
-    """Создаёт минимальную онтологию, если файл не предоставлен."""
+
     def _init_base_ontology(self):
+        """Создаёт минимальную онтологию, если файл не предоставлен."""
+
         # Классы
         self.graph.add((EX.System, RDF.type, OWL.Class))
         self.graph.add((EX.Action, RDF.type, OWL.Class))
@@ -92,20 +95,25 @@ class KnowledgeGraph:
         self.graph.add((EX.blocks, RDFS.domain, EX.Event))
         self.graph.add((EX.blocks, RDFS.range, EX.Activity))
 
-    """
-    Приводит строку к безопасному фрагменту URI
-    """
+    
     def _normalize_name(self, name: str) -> str:
+        """
+        Приводит строку к безопасному фрагменту URI
+        """
+
         safe = re.sub(r'[^\w\s]', '', name)
         safe = re.sub(r'\s+', '_', safe)
         safe = re.sub(r'_+', '_', safe).strip('_')
+
         return safe
     
-    """
-    Вычисляет транзитивное замыкание отношения ex:subclass_of.
-    Возвращает словарь: ключ — URI состояния, значение — множество всех подклассов (включая само состояние).
-    """
+    
     def _compute_subclass_closure(self) -> Dict[URIRef, Set[URIRef]]:
+        """
+        Вычисляет транзитивное замыкание отношения ex:subclass_of.\n
+        Возвращает словарь: ключ — URI состояния, значение — множество всех подклассов (включая само состояние).
+        """
+
         closure = {}
 
         # Получаем все прямые связи subclass_of
@@ -145,13 +153,16 @@ class KnowledgeGraph:
                                 closure[sub].add(super2)
                                 changed = True
         self._subclass_cache = closure
+
         return closure
 
-    """
-    Проверяет, пересекаются ли иерархии двух состояний (т.е. существует ли состояние,
-    которое является подклассом обоих).
-    """
+    
     def _states_overlap(self, state1: URIRef, state2: URIRef) -> bool:
+        """
+        Проверяет, пересекаются ли иерархии двух состояний (т.е. существует ли состояние,
+        которое является подклассом обоих).
+        """
+
         if self._subclass_cache is None:
             self._compute_subclass_closure()
 
@@ -159,14 +170,19 @@ class KnowledgeGraph:
         for c, supers in self._subclass_cache.items():
             if state1 in supers and state2 in supers:
                 return True
+            
         return False
 
+
     # ________________ Блок функций по поиску конфликтов в требованиях ________________
-    """
-    Возвращает список (state, action, object, pred_type)
-    для всех состояний (State) с permits/forbids
-    """
+
+
     def _get_state_activity_pairs(self):
+        """
+        Возвращает список (state, action, object, pred_type)
+        для всех состояний (State) с permits/forbids
+        """
+
         query = """
         PREFIX ex: <http://example.org/requirements#>
         SELECT ?state ?activity ?action ?object ?type
@@ -181,6 +197,7 @@ class KnowledgeGraph:
         """
 
         results = []
+
         for row in self.graph.query(query):
             state = URIRef(row.state)
             activity = URIRef(row.activity)
@@ -188,11 +205,15 @@ class KnowledgeGraph:
             obj = URIRef(row.object) if row.object else None
             ptype = str(row.type)
             results.append((state, activity, action, obj, ptype))
+
         return results
 
-    """Группирует по activity (уникальная комбинация действие + объект)."""
+
     def _group_by_activity(self, pairs):
+        """Группирует по activity (уникальная комбинация действие + объект)."""
+
         groups = {}
+
         for state, activity, action, obj, ptype in pairs:
             if activity not in groups:
                 groups[activity] = {
@@ -203,9 +224,12 @@ class KnowledgeGraph:
 
         return groups
 
-    """Поиск прямых конфликтов"""
+
     def _find_direct_conflicts(self, activity, info):
+        """Поиск прямых конфликтов"""
+
         conflicts = []
+
         direct = info["permits"].intersection(info["forbids"])
         for state in direct:
             reqs = []
@@ -219,11 +243,15 @@ class KnowledgeGraph:
                 f"[STATE CONFLICT] Состояние {state.split('#')[-1]} одновременно разрешает и запрещает {action_str}.\n"
                 f"\tЗатронутые требования:\n\t{reqs_str}"
             )
+
         return conflicts
 
-    """Поиск конфликтов перекрытия иерархий"""
+
     def _find_overlap_conflicts(self, activity, info):
+        """Поиск конфликтов перекрытия иерархий"""
+
         conflicts = []
+
         for s_perm in info["permits"]:
             for s_forb in info["forbids"]:
                 if s_perm == s_forb:
@@ -241,22 +269,29 @@ class KnowledgeGraph:
                         f"пересекаются по иерархии для {action_str}.\n"
                         f"\tЗатронутые требования:\n\t{reqs_str}"
                     )
+
         return conflicts
 
-    """Форматирует ключ действия для вывода"""
+    
     def _format_activity(self, action_uri, object_uri):
+        """Форматирует ключ действия для вывода"""
+        
         action_name = action_uri.split('#')[-1] if action_uri else "?"
+
         if object_uri:
             obj_name = object_uri.split('#')[-1]
             return f"действия '{action_name}' над '{obj_name}'"
+        
         return f"действия '{action_name}'"
     
-    """
-    Ищет семантические конфликты на основе графа:
-    - Прямые противоречия (одно состояние и разрешает, и запрещает)
-    - Перекрытие состояний (два состояния с разными разрешениями для одного действия, иерархии которых пересекаются)
-    """
+    
     def find_conflicts(self) -> List[str]:
+        """
+        Ищет семантические конфликты на основе графа:
+        - Прямые противоречия (одно состояние и разрешает, и запрещает)
+        - Перекрытие состояний (два состояния с разными разрешениями для одного действия, иерархии которых пересекаются)
+        """
+
         if self._subclass_cache is None:
             self._compute_subclass_closure()
 
@@ -264,18 +299,23 @@ class KnowledgeGraph:
         groups = self._group_by_activity(pairs)
 
         all_conflicts = []
+
         for activity, info in groups.items():
             all_conflicts.extend(self._find_direct_conflicts(activity, info))
             all_conflicts.extend(self._find_overlap_conflicts(activity, info))
 
         return all_conflicts
+    
+
     # ________________ Конец блока функций по поиску конфликтов в требованиях ________________
     
-    """
-    Возвращает URI индивида с заданным именем.
-    Если индивид ещё не существует, создаёт его и добавляет в граф с указанным классом.
-    """
+
     def get_or_create_individual(self, name: str, class_uri: URIRef) -> URIRef:
+        """
+        Возвращает URI индивида с заданным именем.
+        Если индивид ещё не существует, создаёт его и добавляет в граф с указанным классом.
+        """
+
         safe_name = self._normalize_name(name)
         if not safe_name:
             safe_name = "unnamed"
@@ -287,12 +327,15 @@ class KnowledgeGraph:
         
         if not exists:
             self.graph.add((individual, RDF.type, class_uri))
+
         return individual
 
-    """
-    Добавляет в граф сущности и связи, извлечённые из требования.
-    """
+    
     def add_requirement(self, req: Requirement):
+        """
+        Добавляет в граф сущности и связи, извлечённые из требования.
+        """
+
         if not req.system or not req.response:
             return  # Ошибка
 
@@ -346,7 +389,9 @@ class KnowledgeGraph:
                 self.req_trace[key] = []
             self.req_trace[key].append((req.id, req.raw_text))
 
-    """Добавляет в граф данные из списка требований."""
+
     def build_from_requirements(self, requirements: List[Requirement]):
+        """Добавляет в граф данные из списка требований."""
+
         for req in requirements:
             self.add_requirement(req)
